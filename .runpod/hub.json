@@ -1,6 +1,6 @@
 {
     "title": "XiCON Poster Maker I2I",
-    "description": "Flux 2 Klein 9B 기반 2단계 I2I 파이프라인. Stage 1: 매거진 커버 + 타이포그래피. Stage 2: 투명 봉투 패키징. Ada GPU (CUDA 12.4) 최적화.",
+    "description": "Flux 2 Klein 9B 기반 2단계 I2I 파이프라인. Stage 1: 매거진 커버 + 타이포그래피. Stage 2: 투명 봉투 패키징.",
     "type": "serverless",
     "category": "image",
     "iconUrl": "https://github.com/wlsdml1114/Engui_Studio/blob/main/assets/logo.png?raw=true",
@@ -8,7 +8,7 @@
         "runsOn": "GPU",
         "containerDiskInGb": 30,
         "gpuCount": 1,
-        "gpuIds": "ADA_24,ADA_32_PRO,ADA_48,ADA_48_PRO",
+        "gpuIds": "ADA_24,AMPERE_48",
         "allowedCudaVersions": ["12.4"]
     }
 }
