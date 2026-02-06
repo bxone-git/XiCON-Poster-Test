@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+# NEVER use set -e: handler must start for worker to register as ready
 
 echo "=========================================="
 echo "Container startup - $(date)"
@@ -10,34 +10,35 @@ NETVOLUME="${NETWORK_VOLUME_PATH:-/runpod-volume}"
 
 echo "Checking Network Volume at $NETVOLUME..."
 if [ ! -d "$NETVOLUME" ]; then
-    echo "ERROR: Network Volume not found at $NETVOLUME"
-    echo "This endpoint requires a Network Volume with models"
-    exit 1
+    echo "WARNING: Network Volume not found at $NETVOLUME"
+    echo "Handler will start but jobs will fail without models"
 fi
 
-# Create symlinks
-echo "Creating symlinks..."
-rm -rf /ComfyUI/models/diffusion_models
-rm -rf /ComfyUI/models/text_encoders
-rm -rf /ComfyUI/models/vae
+# Create symlinks (only if volume exists)
+if [ -d "$NETVOLUME/models" ]; then
+    echo "Creating symlinks..."
+    rm -rf /ComfyUI/models/diffusion_models
+    rm -rf /ComfyUI/models/text_encoders
+    rm -rf /ComfyUI/models/vae
 
-ln -sf $NETVOLUME/models/diffusion_models /ComfyUI/models/diffusion_models
-ln -sf $NETVOLUME/models/text_encoders /ComfyUI/models/text_encoders
-ln -sf $NETVOLUME/models/vae /ComfyUI/models/vae
+    ln -sf $NETVOLUME/models/diffusion_models /ComfyUI/models/diffusion_models
+    ln -sf $NETVOLUME/models/text_encoders /ComfyUI/models/text_encoders
+    ln -sf $NETVOLUME/models/vae /ComfyUI/models/vae
+    echo "Symlinks created!"
+else
+    echo "WARNING: $NETVOLUME/models not found, skipping symlinks"
+fi
 
-echo "Symlinks created!"
-
-# Model verification
+# Model verification (warnings only, never exit)
 check_model() {
     local model_path="$1"
     local model_name="$2"
 
     if [ ! -f "$model_path" ]; then
-        echo "ERROR: Required model not found: $model_name"
-        echo "Path: $model_path"
-        exit 1
+        echo "  [MISSING] $model_name ($model_path)"
+    else
+        echo "  [OK] $model_name"
     fi
-    echo "  [OK] $model_name"
 }
 
 echo "Verifying models..."
@@ -80,9 +81,9 @@ while [ $wait_count -lt $max_wait ]; do
 done
 
 if [ $wait_count -ge $max_wait ]; then
-    echo "Error: ComfyUI failed to start"
-    exit 1
+    echo "WARNING: ComfyUI failed to start within timeout, starting handler anyway"
 fi
 
+# CRITICAL: Handler MUST start for worker to register as ready
 echo "Starting handler..."
 exec python handler.py
