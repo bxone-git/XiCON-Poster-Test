@@ -1,0 +1,22 @@
+{
+  "tests": [
+    {
+      "name": "health_check",
+      "input": {
+        "image_url": "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png",
+        "width": 512,
+        "height": 768,
+        "steps": 10,
+        "cfg": 5,
+        "seed": 42,
+        "output_stage": "stage1"
+      },
+      "timeout": 600000
+    }
+  ],
+  "config": {
+    "gpuTypeId": "ADA_24",
+    "gpuCount": 1,
+    "allowedCudaVersions": ["12.4"]
+  }
+}
