@@ -15,7 +15,7 @@
     }
   ],
   "config": {
-    "gpuTypeId": "AMPERE_48",
+    "gpuTypeId": "ADA_48",
     "gpuCount": 1,
     "allowedCudaVersions": ["12.4"]
   }
