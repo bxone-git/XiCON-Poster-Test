@@ -20,8 +20,7 @@ RUN apt-get update && apt-get install -y \
 RUN pip install --upgrade pip && \
     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
-# SageAttention 2.2+ (SageAttention2++ kernels)
-RUN pip install sageattention>=2.2.0
+# SageAttention will be installed at runtime (requires GPU for CUDA kernel compilation)
 
 # Python packages
 RUN pip install -U "huggingface_hub[hf_transfer]" runpod websocket-client

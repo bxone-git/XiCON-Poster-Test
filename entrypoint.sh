@@ -46,26 +46,13 @@ check_model "$NETVOLUME/models/diffusion_models/flux-2-klein-base-9b-fp8.safeten
 check_model "$NETVOLUME/models/text_encoders/qwen_3_8b_fp8mixed.safetensors" "Qwen 3.8B CLIP"
 check_model "$NETVOLUME/models/vae/flux2-vae.safetensors" "Flux2 VAE"
 
-# GPU Detection and SageAttention setup
+# GPU Detection
 GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "Unknown")
 echo "Detected GPU: $GPU_NAME"
 
-SAGE_FLAG=""
-if echo "$GPU_NAME" | grep -qi "5090\|5080\|blackwell"; then
-    echo "SageAttention: ENABLED (Blackwell SM120 - SageAttention2++ kernels)"
-    export SAGEATTENTION_ENABLED=1
-    SAGE_FLAG="--use-sage-attention"
-elif echo "$GPU_NAME" | grep -qi "4090\|4080\|L40\|6000.*Ada\|ada"; then
-    echo "SageAttention: ENABLED (Ada SM89 kernels)"
-    export SAGEATTENTION_ENABLED=1
-    SAGE_FLAG="--use-sage-attention"
-else
-    echo "SageAttention: DISABLED (unknown GPU architecture)"
-fi
-
-# Start ComfyUI
-echo "Starting ComfyUI ${SAGE_FLAG:+with SageAttention}..."
-python /ComfyUI/main.py --listen $SAGE_FLAG &
+# Start ComfyUI (plain mode for reliability)
+echo "Starting ComfyUI..."
+python /ComfyUI/main.py --listen &
 
 # Wait for ComfyUI
 echo "Waiting for ComfyUI..."
