@@ -149,8 +149,8 @@ def handler(job):
     # Inject parameters into workflow nodes
     prompt["2"]["inputs"]["image"] = image_path
 
-    # Stage 1 params
-    prompt["11:74"]["inputs"]["text"] = job_input.get("prompt_stage1", prompt["11:74"]["inputs"]["text"])
+    # Stage 1 params (accept "prompt" as fallback for "prompt_stage1")
+    prompt["11:74"]["inputs"]["text"] = job_input.get("prompt_stage1", job_input.get("prompt", prompt["11:74"]["inputs"]["text"]))
     prompt["11:62"]["inputs"]["steps"] = int(job_input.get("steps", 20))
     prompt["11:63"]["inputs"]["cfg"] = float(job_input.get("cfg", 5))
     prompt["11:73"]["inputs"]["noise_seed"] = int(job_input.get("seed", 0))
