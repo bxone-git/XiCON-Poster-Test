@@ -52,7 +52,13 @@ def get_images(ws, prompt):
         images_output = []
         if 'images' in node_output:
             for image in node_output['images']:
-                with open(image['fullpath'], 'rb') as f:
+                if 'fullpath' in image:
+                    filepath = image['fullpath']
+                else:
+                    type_to_dir = {'output': '/ComfyUI/output', 'temp': '/ComfyUI/temp', 'input': '/ComfyUI/input'}
+                    base_dir = type_to_dir.get(image.get('type', 'output'), '/ComfyUI/output')
+                    filepath = os.path.join(base_dir, image.get('subfolder', ''), image['filename'])
+                with open(filepath, 'rb') as f:
                     image_data = base64.b64encode(f.read()).decode('utf-8')
                 images_output.append(image_data)
         output_images[node_id] = images_output
