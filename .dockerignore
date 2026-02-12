@@ -1,0 +1,7 @@
+.git
+.omc
+.DS_Store
+.gitignore
+.runpod
+n8n_*.json
+*.md

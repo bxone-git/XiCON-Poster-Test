@@ -47,10 +47,14 @@ RUN mkdir -p /ComfyUI/models/diffusion_models \
 
 # NO MODEL DOWNLOADS - Network Volume 사용
 
-COPY . .
-RUN mkdir -p /ComfyUI/user/default/ComfyUI-Manager
-COPY config.ini /ComfyUI/user/default/ComfyUI-Manager/config.ini
-RUN chmod +x /entrypoint.sh
-RUN chmod +x /setup_netvolume.sh 2>/dev/null || true
+# Rarely-changing files first (cached layer)
+COPY entrypoint.sh setup_netvolume.sh config.ini XiCON_Poster_Maker_I2I_api.json /
+RUN mkdir -p /ComfyUI/user/default/ComfyUI-Manager && \
+    cp /config.ini /ComfyUI/user/default/ComfyUI-Manager/config.ini && \
+    chmod +x /entrypoint.sh && \
+    chmod +x /setup_netvolume.sh 2>/dev/null || true
+
+# Frequently-changing handler.py LAST (tiny layer, fast push)
+COPY handler.py /
 
 CMD ["/entrypoint.sh"]
