@@ -14,6 +14,7 @@ import urllib.parse
 import binascii
 import subprocess
 import time
+import shutil
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ def get_images(ws, prompt):
                     type_to_dir = {'output': '/ComfyUI/output', 'temp': '/ComfyUI/temp', 'input': '/ComfyUI/input'}
                     base_dir = type_to_dir.get(image.get('type', 'output'), '/ComfyUI/output')
                     filepath = os.path.join(base_dir, image.get('subfolder', ''), image['filename'])
+                logger.info(f"Reading image: {filepath} (metadata: {image})")
                 with open(filepath, 'rb') as f:
                     image_data = base64.b64encode(f.read()).decode('utf-8')
                 images_output.append(image_data)
@@ -89,35 +91,42 @@ def save_base64_to_file(base64_data, temp_dir, output_filename):
         logger.error(f"Base64 decoding failed: {e}")
         raise Exception(f"Base64 decoding failed: {e}")
 
-def process_input(input_data, temp_dir, output_filename, input_type):
-    """Process input data and return file path (path/url/base64)"""
+def process_input(input_data, comfyui_input_path, input_type):
+    """Process input data and save to ComfyUI input directory"""
     if input_type == "path":
-        return input_data
+        shutil.copy2(input_data, comfyui_input_path)
+        return comfyui_input_path
     elif input_type == "url":
-        os.makedirs(temp_dir, exist_ok=True)
-        file_path = os.path.abspath(os.path.join(temp_dir, output_filename))
-        return download_file(input_data, file_path)
+        return download_file(input_data, comfyui_input_path)
     elif input_type == "base64":
-        return save_base64_to_file(input_data, temp_dir, output_filename)
+        return save_base64_to_file(input_data, os.path.dirname(comfyui_input_path), os.path.basename(comfyui_input_path))
     else:
         raise Exception(f"Unsupported input type: {input_type}")
 
 def get_image_input(job_input, task_id):
-    """Extract image input from job_input (supports multiple formats)"""
+    """Extract image input and save to /ComfyUI/input/ for LoadImage node"""
+    input_filename = f"poster_input_{uuid.uuid4().hex[:8]}.jpg"
+    comfyui_input_path = f"/ComfyUI/input/{input_filename}"
+
     if "image_path" in job_input:
-        return process_input(job_input["image_path"], task_id, "input_image.jpg", "path")
+        process_input(job_input["image_path"], comfyui_input_path, "path")
     elif "image_url" in job_input:
-        return process_input(job_input["image_url"], task_id, "input_image.jpg", "url")
+        process_input(job_input["image_url"], comfyui_input_path, "url")
     elif "image_base64" in job_input:
-        return process_input(job_input["image_base64"], task_id, "input_image.jpg", "base64")
+        process_input(job_input["image_base64"], comfyui_input_path, "base64")
     # Nested format (n8n/frontend compatibility)
     elif "images" in job_input and isinstance(job_input["images"], dict):
         images = job_input["images"]
         if images.get("input_image"):
-            return process_input(images["input_image"], task_id, "input_image.jpg", "url")
+            process_input(images["input_image"], comfyui_input_path, "url")
         elif images.get("reference_image"):
-            return process_input(images["reference_image"], task_id, "input_image.jpg", "url")
-    return None
+            process_input(images["reference_image"], comfyui_input_path, "url")
+        else:
+            return None, None
+    else:
+        return None, None
+
+    return input_filename, comfyui_input_path
 
 def get_output_images(images_dict, output_stage, stage1_node="12", final_node="16"):
     """Return images based on output_stage selection"""
@@ -145,62 +154,76 @@ def handler(job):
     task_id = f"task_{uuid.uuid4()}"
 
     # Process image input
-    image_path = get_image_input(job_input, task_id)
-    if image_path is None:
+    input_filename, comfyui_input_path = get_image_input(job_input, task_id)
+    if input_filename is None:
         raise Exception("Image input is required. Provide image_path, image_url, or image_base64")
 
-    # Load workflow JSON
-    prompt = load_workflow('/XiCON_Poster_Maker_I2I_api.json')
+    try:
+        # Load workflow JSON
+        prompt = load_workflow('/XiCON_Poster_Maker_I2I_api.json')
 
-    # Inject parameters into workflow nodes
-    prompt["2"]["inputs"]["image"] = image_path
+        # Inject parameters into workflow nodes
+        # CRITICAL: Pass only the filename to LoadImage node, NOT the full path
+        prompt["2"]["inputs"]["image"] = input_filename
 
-    # Stage 1 params (accept "prompt" as fallback for "prompt_stage1")
-    prompt["11:74"]["inputs"]["text"] = job_input.get("prompt_stage1", job_input.get("prompt", prompt["11:74"]["inputs"]["text"]))
-    prompt["11:62"]["inputs"]["steps"] = int(job_input.get("steps", 20))
-    prompt["11:63"]["inputs"]["cfg"] = float(job_input.get("cfg", 5))
-    prompt["11:73"]["inputs"]["noise_seed"] = int(job_input.get("seed", 0))
-    prompt["11:66"]["inputs"]["width"] = int(job_input.get("width", 1024))
-    prompt["11:66"]["inputs"]["height"] = int(job_input.get("height", 1472))
+        # Stage 1 params (accept "prompt" as fallback for "prompt_stage1")
+        prompt["11:74"]["inputs"]["text"] = job_input.get("prompt_stage1", job_input.get("prompt", prompt["11:74"]["inputs"]["text"]))
+        prompt["11:62"]["inputs"]["steps"] = int(job_input.get("steps", 20))
+        prompt["11:63"]["inputs"]["cfg"] = float(job_input.get("cfg", 5))
+        prompt["11:73"]["inputs"]["noise_seed"] = int(job_input.get("seed", 0))
+        prompt["11:66"]["inputs"]["width"] = int(job_input.get("width", 1024))
+        prompt["11:66"]["inputs"]["height"] = int(job_input.get("height", 1472))
 
-    # Stage 2 params
-    prompt["15:74"]["inputs"]["text"] = job_input.get("prompt_stage2", prompt["15:74"]["inputs"]["text"])
-    prompt["15:62"]["inputs"]["steps"] = int(job_input.get("steps", 20))
-    prompt["15:63"]["inputs"]["cfg"] = float(job_input.get("cfg", 5))
-    prompt["15:73"]["inputs"]["noise_seed"] = int(job_input.get("seed", 0))
+        # Stage 2 params
+        prompt["15:74"]["inputs"]["text"] = job_input.get("prompt_stage2", prompt["15:74"]["inputs"]["text"])
+        prompt["15:62"]["inputs"]["steps"] = int(job_input.get("steps", 20))
+        prompt["15:63"]["inputs"]["cfg"] = float(job_input.get("cfg", 5))
+        prompt["15:73"]["inputs"]["noise_seed"] = int(job_input.get("seed", 0))
 
-    # HTTP health check before WebSocket
-    http_url = f"http://{server_address}:8188/"
-    max_http_attempts = 180
-    for http_attempt in range(max_http_attempts):
-        try:
-            urllib.request.urlopen(http_url, timeout=5)
-            logger.info(f"HTTP connection successful (attempt {http_attempt+1})")
-            break
-        except Exception as e:
-            if http_attempt == max_http_attempts - 1:
-                raise Exception("Cannot connect to ComfyUI server.")
-            time.sleep(1)
+        # HTTP health check before WebSocket
+        http_url = f"http://{server_address}:8188/"
+        max_http_attempts = 180
+        for http_attempt in range(max_http_attempts):
+            try:
+                urllib.request.urlopen(http_url, timeout=5)
+                logger.info(f"HTTP connection successful (attempt {http_attempt+1})")
+                break
+            except Exception as e:
+                if http_attempt == max_http_attempts - 1:
+                    raise Exception("Cannot connect to ComfyUI server.")
+                time.sleep(1)
 
-    # WebSocket connection with retry
-    ws_url = f"ws://{server_address}:8188/ws?clientId={client_id}"
-    ws = websocket.WebSocket()
-    max_attempts = 36
-    for attempt in range(max_attempts):
-        try:
-            ws.connect(ws_url)
-            logger.info(f"WebSocket connection successful (attempt {attempt+1})")
-            break
-        except Exception as e:
-            if attempt == max_attempts - 1:
-                raise Exception("WebSocket connection timeout (3 minutes)")
-            time.sleep(5)
+        # WebSocket connection with retry
+        ws_url = f"ws://{server_address}:8188/ws?clientId={client_id}"
+        ws = websocket.WebSocket()
+        max_attempts = 36
+        for attempt in range(max_attempts):
+            try:
+                ws.connect(ws_url)
+                logger.info(f"WebSocket connection successful (attempt {attempt+1})")
+                break
+            except Exception as e:
+                if attempt == max_attempts - 1:
+                    raise Exception("WebSocket connection timeout (3 minutes)")
+                time.sleep(5)
 
-    images = get_images(ws, prompt)
-    ws.close()
+        # Set WebSocket timeout
+        ws.settimeout(600)
 
-    # Return result based on output_stage
-    output_stage = job_input.get("output_stage", "final")
-    return get_output_images(images, output_stage, stage1_node="12", final_node="16")
+        images = get_images(ws, prompt)
+        ws.close()
+
+        # Return result based on output_stage
+        output_stage = job_input.get("output_stage", "final")
+        return get_output_images(images, output_stage, stage1_node="12", final_node="16")
+
+    finally:
+        # Cleanup input file
+        if comfyui_input_path and os.path.exists(comfyui_input_path):
+            try:
+                os.remove(comfyui_input_path)
+                logger.info(f"Cleaned up input file: {comfyui_input_path}")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup input file: {e}")
 
 runpod.serverless.start({"handler": handler})
